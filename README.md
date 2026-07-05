@@ -8,6 +8,10 @@
 hardware you have.** The headline feature is the *policy that decides how little
 to stream* — not streaming itself.
 
+**[Live tier calculator](https://code2031.github.io/streamllm/#calculator)**: pick
+a model + hardware and see which tier it lands in and the full memory breakdown,
+client-side, matching `streamllm describe`.
+
 streamllm detects your memory budget and picks the **least-streaming tier that
 fits**. When the model fits in your accelerator, it does **not** stream — it
 loads normally and tells you a dedicated engine would be faster. When the model
