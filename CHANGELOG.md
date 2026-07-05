@@ -6,6 +6,13 @@ All notable changes to streamllm are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Packaging: use the PEP 639 SPDX `license = "Apache-2.0"` + `license-files` form
+  (was the legacy `license = { text = ... }`), which produces valid metadata that
+  `twine check` accepts. Pin `hatchling>=1.27`. CI now builds the sdist + wheel,
+  runs `twine check`, and installs the wheel in a fresh venv to smoke-test the
+  `streamllm` entry point and confirm `py.typed` ships.
+
 ### Changed
 - `streamllm describe` / `estimate_only` now build a cheap meta-device skeleton
   (still zero memory, no weights) to get **exact** per-layer/resident param counts,

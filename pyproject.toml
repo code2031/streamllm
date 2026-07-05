@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.20"]
+requires = ["hatchling>=1.27"]  # >=1.27 supports PEP 639 SPDX license + license-files
 build-backend = "hatchling.build"
 
 [project]
@@ -8,13 +8,13 @@ version = "0.1.0"
 description = "Speed-first, auto-tiering inference for large language models on whatever hardware you have."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{ name = "streamllm contributors" }]
 keywords = ["llm", "inference", "streaming", "offload", "quantization", "transformers"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
