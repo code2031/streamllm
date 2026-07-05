@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install (CPU torch, no GPU)
+        run: |
+          python -m pip install --upgrade pip
+          # CPU-only torch so CI needs no GPU and stays small.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[test,dev]"
+
+      - name: Ruff lint
+        run: ruff check src tests bench web/server.py
+
+      - name: Ruff format
+        run: ruff format --check src tests bench
+
+      - name: Mypy
+        run: mypy src
+
+      - name: Pytest (CPU, no downloads)
+        env:
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+        run: PYTHONPATH=src pytest -q

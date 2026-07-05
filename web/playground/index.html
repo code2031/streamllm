@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>streamllm playground</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <style>
+    .pg { display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start; }
+    .chat { background: var(--canvas); border-radius: var(--r-lg); box-shadow: var(--shadow-3); display: flex; flex-direction: column; min-height: 60vh; }
+    .messages { flex: 1; padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+    .msg { max-width: 80%; padding: 12px 16px; border-radius: var(--r-md); font-size: 15px; line-height: 1.55; white-space: pre-wrap; }
+    .msg.user { align-self: flex-end; background: var(--ink); color: var(--on-primary); }
+    .msg.bot { align-self: flex-start; background: var(--canvas-soft-2); color: var(--ink); }
+    .msg.bot .cursor { display: inline-block; width: 7px; height: 15px; background: var(--ink); margin-left: 2px; animation: blink 1s step-end infinite; vertical-align: text-bottom; }
+    @keyframes blink { 50% { opacity: 0; } }
+    .composer { border-top: 1px solid var(--hairline); padding: 16px; display: flex; gap: 10px; }
+    .composer input { flex: 1; }
+    .panel { background: var(--canvas); border-radius: var(--r-lg); box-shadow: var(--shadow-3); padding: 22px; position: sticky; top: 88px; }
+    .panel h3 { font-size: 14px; margin-bottom: 14px; }
+    .kv { font-size: 13px; border-collapse: collapse; width: 100%; }
+    .kv td { padding: 6px 0; border-bottom: 1px solid var(--hairline); }
+    .kv td:last-child { text-align: right; font-family: var(--mono); color: var(--ink); }
+    .kv td:first-child { color: var(--body); }
+    .stat-row { display: flex; gap: 14px; margin-top: 14px; font-size: 12px; color: var(--mute); font-family: var(--mono); }
+    .empty { color: var(--mute); font-size: 14px; align-self: center; margin: auto; text-align: center; max-width: 38ch; }
+    @media (max-width: 860px) { .pg { grid-template-columns: 1fr; } .panel { position: static; } }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap">
+      <a class="brand" href="../"><span class="dot"></span> streamllm</a>
+      <div class="nav-links">
+        <a href="../#calculator">Calculator</a>
+        <a href="../#quickstart">Quickstart</a>
+        <a class="btn btn-secondary btn-sm" href="https://github.com/streamllm/streamllm">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="band band-soft">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Live, on this server's hardware</p>
+        <h2>Playground</h2>
+        <p>Generate tokens through the streaming runner. The panel shows the chosen tier and live throughput. Set <span class="mono">STREAMLLM_MODEL</span> on the server to load a real model.</p>
+      </div>
+      <div class="pg">
+        <div class="chat">
+          <div class="messages" id="messages">
+            <div class="empty" id="empty">Send a prompt to start. Tokens stream as the runner produces them.</div>
+          </div>
+          <div class="composer">
+            <input id="prompt" class="" type="text" placeholder="Type a prompt and press Enter" autocomplete="off" />
+            <button id="send" class="btn btn-primary btn-sm">Send</button>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Chosen tier</h3>
+          <table class="kv" id="describe">
+            <tr><td>tier</td><td id="d-tier">loading...</td></tr>
+            <tr><td>backing</td><td id="d-backing">-</td></tr>
+            <tr><td>device</td><td id="d-device">-</td></tr>
+            <tr><td>cache_layers</td><td id="d-cache">-</td></tr>
+            <tr><td>weights</td><td id="d-weights">-</td></tr>
+            <tr><td>KV @ max ctx</td><td id="d-kv">-</td></tr>
+          </table>
+          <p id="d-note" class="verdict-note" style="margin-top:16px;font-size:13px"></p>
+          <div class="stat-row" id="stats" style="display:none">
+            <span id="s-tps"></span><span id="s-ttft"></span><span id="s-bottleneck"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

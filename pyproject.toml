@@ -1,0 +1,88 @@
+[build-system]
+requires = ["hatchling>=1.20"]
+build-backend = "hatchling.build"
+
+[project]
+name = "streamllm"
+version = "0.1.0"
+description = "Speed-first, auto-tiering inference for large language models on whatever hardware you have."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "streamllm contributors" }]
+keywords = ["llm", "inference", "streaming", "offload", "quantization", "transformers"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Core deps. Importing streamllm must NOT require bitsandbytes (quant is optional).
+dependencies = [
+  "torch>=2.1",
+  "transformers>=4.40",
+  "accelerate>=0.30",
+  "safetensors>=0.4",
+  "psutil>=5.9",
+  "numpy>=1.24",
+  "tqdm>=4.65",
+]
+
+[project.optional-dependencies]
+quant = ["bitsandbytes>=0.43"]
+web = ["fastapi>=0.110", "uvicorn>=0.29"]
+test = ["pytest>=7.4", "hypothesis>=6.90"]
+dev = ["ruff>=0.5", "mypy>=1.8", "pre-commit>=3.5"]
+
+[project.scripts]
+streamllm = "streamllm.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/streamllm/streamllm"
+Documentation = "https://github.com/streamllm/streamllm/tree/main/docs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/streamllm"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "bench"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
+ignore = [
+  "B008",   # function call in default arg — not used in hot paths here
+  "RUF012", # mutable class attrs — dataclasses handle this
+  "C408",   # dict(...) literals — used deliberately for readable kwarg bundles
+  "RUF002", # ambiguous unicode in docstrings (we use ×, –, ≈ as real typography)
+  "RUF003", # ambiguous unicode in comments — same rationale
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011", "B017", "E731"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+ignore_missing_imports = true
+# Pragmatic strictness: the public API is fully typed; torch/transformers
+# internals are dynamically typed, so we do not chase every Any across them.
+exclude = ["tests/", "bench/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
+markers = [
+  "slow: marks tests that are slower (deselect with '-m \"not slow\"')",
+  "cuda: requires a CUDA device",
+]

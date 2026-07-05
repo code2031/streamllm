@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>streamllm — speed-first, auto-tiering LLM inference</title>
+  <meta name="description" content="streamllm auto-detects your memory budget and picks the least-streaming tier that fits. When the model fits, it tells you to use a real engine. When it doesn't, it streams as little as possible and is honest about the cost." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap">
+      <a class="brand" href="#top"><span class="dot"></span> streamllm</a>
+      <div class="nav-links">
+        <a href="#tiers">Tiers</a>
+        <a href="#calculator">Calculator</a>
+        <a href="#quickstart">Quickstart</a>
+        <a href="playground/">Playground</a>
+        <a class="btn btn-secondary btn-sm" href="https://github.com/streamllm/streamllm">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero" id="top">
+    <div class="mesh"></div>
+    <div class="wrap">
+      <p class="eyebrow">Open source, Apache-2.0</p>
+      <h1>Run models that don't fit. As fast as the hardware allows.</h1>
+      <p class="lead">streamllm picks the least-streaming tier your hardware can run. If the model fits, it says so and loads normally.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="#calculator">See your tier</a>
+        <a class="btn btn-secondary" href="#quickstart">Quickstart</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="band band-soft" id="tiers">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>The headline feature is the policy that decides how little to stream.</h2>
+        <p class="lead">Streaming transformer weights layer-by-layer is the fallback that makes otherwise-impossible models merely slow. It is never the fastest path when memory exists. streamllm auto-selects the least-streaming tier and logs the numbers that forced it.</p>
+      </div>
+      <table class="tier-table">
+        <thead>
+          <tr><th>Tier</th><th>When it is chosen</th><th>What happens</th><th>Honest expectation</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="tier-pill t0"><span class="swatch"></span>full</span></td>
+            <td>Weights + KV at max context + activations fit the accelerator</td>
+            <td><strong>No streaming.</strong> Plain full load.</td>
+            <td>Use vLLM / TGI / llama.cpp. They will be faster. streamllm says so, then runs.</td>
+          </tr>
+          <tr>
+            <td><span class="tier-pill t1"><span class="swatch"></span>gpu_ram</span></td>
+            <td>Does not fit VRAM, fits host RAM, 2+ layers resident on a discrete GPU</td>
+            <td>Resident set on GPU; stream the rest from <strong>pinned host RAM</strong>, LRU + async prefetch</td>
+            <td>Slower than Tier 0, usually compute-bound if the bus keeps up</td>
+          </tr>
+          <tr>
+            <td><span class="tier-pill t2"><span class="swatch"></span>ram</span></td>
+            <td>Fits host RAM, little or no usable GPU, or unified memory</td>
+            <td>All decoder weights in RAM; stream into compute. Unified memory is residency, not a real copy</td>
+            <td>Workable. On unified memory, close to native.</td>
+          </tr>
+          <tr>
+            <td><span class="tier-pill t3"><span class="swatch"></span>disk</span></td>
+            <td>Does not fit RAM</td>
+            <td>Stream layers from <strong>mmap'd on-disk shards</strong></td>
+            <td>I/O-bound by physics. The benchmark reports the disk read ceiling you actually hit.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="band band-white" id="calculator">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Client-side, no model loaded</p>
+        <h2>Which tier will your model land in?</h2>
+        <p>This runs the exact memory budget model and tier policy from the library, in your browser. The verdict matches <span class="mono">streamllm describe</span>.</p>
+      </div>
+      <div class="calc">
+        <div class="calc-controls">
+          <div class="field">
+            <label for="sel-model">Model</label>
+            <select id="sel-model"></select>
+          </div>
+          <div class="field">
+            <label for="sel-hw">Hardware</label>
+            <select id="sel-hw"></select>
+          </div>
+          <div class="field">
+            <label>Weight precision</label>
+            <div class="seg" data-seg="dtype">
+              <button data-val="bf16" class="on">bf16</button>
+              <button data-val="fp16">fp16</button>
+              <button data-val="fp32">fp32</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Quantization (weights only)</label>
+            <div class="seg" data-seg="quant">
+              <button data-val="none" class="on">none</button>
+              <button data-val="int8">int8</button>
+              <button data-val="int4">int4</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="inp-context">Max context (prompt + new tokens)</label>
+            <input id="inp-context" type="number" value="8192" min="1" step="512" />
+            <p class="hint">KV cache grows with this. Long context can demote the tier.</p>
+          </div>
+          <div class="field">
+            <label for="inp-batch">Batch size</label>
+            <input id="inp-batch" type="number" value="1" min="1" step="1" />
+          </div>
+        </div>
+
+        <div class="calc-result">
+          <div class="verdict-head">
+            <span id="verdict-tier" class="verdict-tier">Tier 0</span>
+            <span id="verdict-pill" class="tier-pill t0"><span class="swatch"></span>full</span>
+          </div>
+          <p id="verdict-reason" class="verdict-reason"></p>
+          <p id="verdict-note" class="verdict-note"></p>
+
+          <div class="bar-wrap">
+            <div class="bar-label"><span>Peak device memory</span><span id="bar-total"></span></div>
+            <div class="bar">
+              <span id="b-weights" class="b-weights"></span>
+              <span id="b-kv" class="b-kv"></span>
+              <span id="b-act" class="b-act"></span>
+              <span id="b-over" class="b-over"></span>
+            </div>
+            <div class="legend">
+              <span><i style="background:var(--ink)"></i> weights</span>
+              <span><i style="background:var(--g-develop-start)"></i> KV cache</span>
+              <span><i style="background:var(--g-ship-end)"></i> activation</span>
+              <span><i style="background:var(--hairline-strong)"></i> overhead</span>
+            </div>
+          </div>
+
+          <table class="breakdown">
+            <tr><td>Weights total</td><td id="bd-weights"></td></tr>
+            <tr><td>Per-layer x count</td><td id="bd-perlayer"></td></tr>
+            <tr><td>Resident (embed + norm + head)</td><td id="bd-resident"></td></tr>
+            <tr><td>KV cache at max context</td><td id="bd-kv"></td></tr>
+            <tr><td>Activation peak (prefill)</td><td id="bd-act"></td></tr>
+            <tr><td>Framework overhead reserve</td><td id="bd-over"></td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band band-soft" id="fit">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>Hardware-fit matrix</h2>
+        <p>Approximate tier per accelerator and model, at roughly 8k context. Bold means "do not stream, use a real engine." Run the calculator above for the numbers on your box.</p>
+      </div>
+      <table class="matrix">
+        <thead>
+          <tr><th>Model</th><th>8 GB GPU</th><th>24 GB GPU</th><th>128 GB unified</th><th>CPU 32 GB</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>7B fp16</td><td class="cell-tier t1">Tier 1</td><td class="cell-tier t0"><strong>Tier 0</strong></td><td class="cell-tier t0"><strong>Tier 0</strong></td><td class="cell-tier t0">Tier 0</td></tr>
+          <tr><td>13B fp16</td><td class="cell-tier t1">Tier 1</td><td class="cell-tier t0"><strong>Tier 0</strong></td><td class="cell-tier t0"><strong>Tier 0</strong></td><td class="cell-tier t2">Tier 2</td></tr>
+          <tr><td>70B fp16</td><td class="cell-tier t3">Tier 3</td><td class="cell-tier t1">Tier 1</td><td class="cell-tier t2">Tier 2</td><td class="cell-tier t3">Tier 3</td></tr>
+          <tr><td>70B int4</td><td class="cell-tier t1">Tier 1</td><td class="cell-tier t0"><strong>Tier 0</strong></td><td class="cell-tier t0"><strong>Tier 0</strong></td><td class="cell-tier t2">Tier 2</td></tr>
+          <tr><td>405B int4</td><td class="cell-tier t3">Tier 3</td><td class="cell-tier t3">Tier 3</td><td class="cell-tier t3">Tier 3</td><td class="cell-tier t3">Tier 3</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="band band-white">
+    <div class="wrap">
+      <div class="grid-2">
+        <div class="feature">
+          <h3>Honest by construction</h3>
+          <p>Tier 0 prints that a dedicated engine is faster. Tier 3 prints the effective disk read ceiling it actually hit. The benchmark reports median and p90, time-to-first-token, and an I/O-vs-compute verdict. No marketing math.</p>
+        </div>
+        <div class="feature">
+          <h3>Correctness-first streaming</h3>
+          <p>Weights stream via forward hooks while the model's own attention, RoPE and KV-cache math run untouched. A verify-against-full-load test confirms streamed logits match a plain full load for prefill and multi-step decode.</p>
+        </div>
+        <div class="feature">
+          <h3>The memory model gets KV right</h3>
+          <p>KV cache uses num_key_value_heads, not num_attention_heads. A 0.9 headroom factor guards against "fits at load, OOMs as KV grows". If a tier OOMs for real, streamllm demotes one tier with a loud warning instead of crashing.</p>
+        </div>
+        <div class="feature">
+          <h3>Disk shards that amortize</h3>
+          <p>One safetensors file per layer with a hashed manifest. Sharding is resumable and verified. Quantized shards (int8 / int4) read fewer bytes per layer, and batching makes one layer read serve many sequences.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band band-dark">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow" style="color:var(--mute)">Limitations, first</p>
+        <h2>The disk tier is I/O-bound by physics.</h2>
+        <p class="lead">Reading every layer per token is disk-bandwidth-limited. Quantized shards, larger batches and prefetch overlap reduce the wall. None of them remove it. streamllm says this in logs and reports rather than implying otherwise. If your model fits, the right answer is a dedicated engine, and the library will tell you.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="band band-soft" id="quickstart">
+    <div class="wrap">
+      <div class="grid-2" style="align-items:center">
+        <div>
+          <h2>Quickstart</h2>
+          <p class="lead" style="margin-top:14px">Install, point at any Llama- or Qwen-family model, and stream tokens. Plan a model you cannot even run with <span class="mono">streamllm describe</span>, no weights loaded.</p>
+          <div class="hero-cta" style="justify-content:flex-start;margin-top:24px">
+            <a class="btn btn-primary" href="playground/">Open the playground</a>
+            <a class="btn btn-secondary" href="https://github.com/streamllm/streamllm">Read the docs</a>
+          </div>
+        </div>
+        <div class="code"><span class="c"># install</span>
+pip install streamllm
+
+<span class="c"># stream tokens, auto-tier</span>
+<span class="k">from</span> streamllm <span class="k">import</span> StreamModel
+
+sm = StreamModel.<span class="f">from_pretrained</span>(<span class="s">"meta-llama/Llama-3.1-8B"</span>)
+<span class="k">print</span>(sm.decision.<span class="f">summary</span>())   <span class="c"># tier + why</span>
+
+<span class="k">for</span> piece <span class="k">in</span> sm.<span class="f">generate</span>(<span class="s">"Streaming inference is"</span>,
+                        max_new_tokens=<span class="s">64</span>, stream=<span class="k">True</span>):
+    <span class="k">print</span>(piece, end=<span class="s">""</span>, flush=<span class="k">True</span>)
+
+<span class="c"># plan on a machine that cannot run it</span>
+$ streamllm describe meta-llama/Llama-3.1-70B --quantize int4</div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="wrap">
+      <a class="brand" href="#top"><span class="dot"></span> streamllm</a>
+      <p>Speed-first, auto-tiering inference. Apache-2.0. Inference only, single accelerator, no serving infra.</p>
+    </div>
+  </footer>
+
+  <script src="calc.js"></script>
+</body>
+</html>
