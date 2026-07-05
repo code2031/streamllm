@@ -10,6 +10,7 @@ let busy = false;
 async function loadDescribe() {
   try {
     const r = await fetch("/api/describe");
+    if (!r.ok) throw new Error("no backend");
     const d = await r.json();
     const b = d.budget || {};
     set("d-tier", `${d.tier} (${d.tier_name})`);
@@ -22,8 +23,24 @@ async function loadDescribe() {
     note.textContent = d.honest_note || "";
     note.className = "verdict-note" + (d.tier === 3 ? " warn" : "");
   } catch (e) {
-    set("d-tier", "server offline");
+    showStaticPreview();
   }
+}
+
+// On a static host (GitHub Pages, no backend) the playground has no server to
+// stream from. Explain how to run it locally instead of showing a dead UI.
+function showStaticPreview() {
+  set("d-tier", "not connected");
+  const note = document.getElementById("d-note");
+  note.textContent = "Static preview. The playground needs a running server.";
+  note.className = "verdict-note warn";
+  const empty = document.getElementById("empty");
+  if (empty) {
+    empty.textContent =
+      "This is a static preview with no backend. Run the playground locally: " +
+      "pip install 'streamllm[web]' then STREAMLLM_MODEL=<model-id> python web/server.py";
+  }
+  promptInput.placeholder = "Run the server locally to chat";
 }
 
 function set(id, v) { document.getElementById(id).textContent = v; }
