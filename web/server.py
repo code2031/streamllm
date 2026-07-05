@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from fastapi import FastAPI, Request
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import FileResponse, StreamingResponse
     from fastapi.staticfiles import StaticFiles
 except ImportError as exc:  # pragma: no cover
@@ -39,10 +39,29 @@ from streamllm.logging_utils import get_logger
 _log = get_logger("web")
 _WEB = Path(__file__).parent
 
+# Resource-exhaustion guards for a playground that might get exposed. Overridable
+# by the operator via env, but bounded by default so an untrusted client cannot
+# request a million-token generation or a giant prompt, and cannot pile up
+# concurrent generations against the single shared model.
+MAX_NEW_TOKENS = int(os.environ.get("STREAMLLM_WEB_MAX_NEW_TOKENS", "512"))
+MAX_PROMPT_CHARS = int(os.environ.get("STREAMLLM_WEB_MAX_PROMPT_CHARS", "8000"))
+
 app = FastAPI(title="streamllm playground")
 
 _MODEL: Any = None
 _MODEL_LOCK = asyncio.Lock()
+# Only one generation at a time: the shared streaming runner's cache/metrics are
+# not safe for concurrent .generate calls. Extra requests get 429 (see below).
+_GEN_SEMA = asyncio.Semaphore(1)
+
+
+def _safe_model_name(name: Any) -> Any:
+    """Avoid leaking an absolute local filesystem path in ``/api/describe``."""
+    if isinstance(name, str) and ("/" in name or "\\" in name):
+        with contextlib.suppress(Exception):
+            if Path(name).exists():
+                return Path(name).name
+    return name
 
 
 def _load_model() -> Any:
@@ -88,22 +107,38 @@ async def _ensure_model() -> Any:
 @app.get("/api/describe")
 async def describe() -> dict[str, Any]:
     sm = await _ensure_model()
-    return sm.describe()
+    info = sm.describe()
+    info["model"] = _safe_model_name(info.get("model"))
+    return info
 
 
 @app.post("/api/generate")
 async def generate(request: Request) -> StreamingResponse:
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid JSON body") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="body must be a JSON object")
+
     prompt = str(body.get("prompt", ""))
-    max_new = int(body.get("max_new_tokens", 128))
-    temperature = float(body.get("temperature", 0.8))
+    if len(prompt) > MAX_PROMPT_CHARS:
+        raise HTTPException(status_code=413, detail=f"prompt exceeds {MAX_PROMPT_CHARS} chars")
+    # Clamp untrusted numeric knobs to bounded ranges.
+    max_new = max(1, min(int(body.get("max_new_tokens", 128)), MAX_NEW_TOKENS))
+    temperature = min(max(float(body.get("temperature", 0.8)), 0.0), 5.0)
     do_sample = bool(body.get("do_sample", True))
+
+    # One generation at a time; reject rather than queue so load cannot pile up.
+    if _GEN_SEMA.locked():
+        raise HTTPException(status_code=429, detail="busy: one generation at a time")
     sm = await _ensure_model()
 
     async def event_stream() -> Any:
         # Run the (blocking) generator in a thread, forwarding pieces over SSE.
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
+        await _GEN_SEMA.acquire()
 
         def produce() -> None:
             try:
@@ -115,8 +150,10 @@ async def generate(request: Request) -> StreamingResponse:
                     stream=True,
                 ):
                     loop.call_soon_threadsafe(queue.put_nowait, ("token", piece))
-            except Exception as exc:  # surface generation errors to the client
-                loop.call_soon_threadsafe(queue.put_nowait, ("error", str(exc)))
+            except Exception:
+                # Log the detail server-side; never leak internals to the client.
+                _log.exception("playground generation failed")
+                loop.call_soon_threadsafe(queue.put_nowait, ("error", "generation failed"))
             finally:
                 m = sm.last_metrics
                 done = {
@@ -128,12 +165,15 @@ async def generate(request: Request) -> StreamingResponse:
                 }
                 loop.call_soon_threadsafe(queue.put_nowait, ("done", done))
 
-        asyncio.get_running_loop().run_in_executor(None, produce)
-        while True:
-            kind, payload = await queue.get()
-            yield f"event: {kind}\ndata: {json.dumps(payload)}\n\n"
-            if kind in ("done", "error"):
-                break
+        try:
+            loop.run_in_executor(None, produce)
+            while True:
+                kind, payload = await queue.get()
+                yield f"event: {kind}\ndata: {json.dumps(payload)}\n\n"
+                if kind in ("done", "error"):
+                    break
+        finally:
+            _GEN_SEMA.release()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

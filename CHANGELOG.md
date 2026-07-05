@@ -12,6 +12,17 @@ All notable changes to streamllm are documented here. The format follows
 - `py.typed` marker so downstream users get streamllm's type information (PEP 561).
 - `streamllm --version` flag.
 - `LICENSE` (Apache-2.0), `CONTRIBUTING.md`, `CHANGELOG.md`.
+- Expanded test coverage (74 -> 91): module-graph discovery on a third
+  architecture (GPT-2), top-k/top-p/min-p filter semantics, hypothesis property
+  tests for KV linear scaling, sliding-window streamed-vs-full forward, LRU-cache
+  concurrency stress, playground TestClient smoke, and int4 shard reload.
+
+### Security
+- Playground server (`web/server.py`) hardened: `max_new_tokens` and prompt length
+  are clamped, generation is serialized (HTTP 429 when busy) so load cannot pile
+  up against the single shared model, generation errors return a generic message
+  (details logged server-side, never leaked to the client), and `/api/describe`
+  no longer exposes an absolute local model path.
 
 ## [0.1.0] - 2026-06-24
 
