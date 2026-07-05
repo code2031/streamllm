@@ -170,7 +170,9 @@ async def generate(request: Request) -> StreamingResponse:
             while True:
                 kind, payload = await queue.get()
                 yield f"event: {kind}\ndata: {json.dumps(payload)}\n\n"
-                if kind in ("done", "error"):
+                # `done` is always the terminal event (produce emits it in finally,
+                # even after an error), so the stream always ends cleanly.
+                if kind == "done":
                     break
         finally:
             _GEN_SEMA.release()
