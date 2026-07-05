@@ -29,3 +29,4 @@ bench-*.csv
 
 # Claude Code local settings
 .claude/
+.gstack/
