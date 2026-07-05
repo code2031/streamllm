@@ -6,27 +6,25 @@ All notable changes to streamllm are documented here. The format follows
 
 ## [Unreleased]
 
-### Added
-- GitHub Actions CI running ruff, mypy, and the pytest suite on CPU (no GPU, no
-  downloads) across Python 3.11 and 3.12.
-- `py.typed` marker so downstream users get streamllm's type information (PEP 561).
-- `streamllm --version` flag.
-- `LICENSE` (Apache-2.0), `CONTRIBUTING.md`, `CHANGELOG.md`.
-- Expanded test coverage (74 -> 91): module-graph discovery on a third
-  architecture (GPT-2), top-k/top-p/min-p filter semantics, hypothesis property
-  tests for KV linear scaling, sliding-window streamed-vs-full forward, LRU-cache
-  concurrency stress, playground TestClient smoke, and int4 shard reload.
-
-### Security
-- Playground server (`web/server.py`) hardened: `max_new_tokens` and prompt length
-  are clamped, generation is serialized (HTTP 429 when busy) so load cannot pile
-  up against the single shared model, generation errors return a generic message
-  (details logged server-side, never leaked to the client), and `/api/describe`
-  no longer exposes an absolute local model path.
+Nothing yet.
 
 ## [0.1.0] - 2026-06-24
 
 First release. Speed-first, auto-tiering inference for large language models.
+
+### Packaging & CI
+- GitHub Actions CI running ruff, mypy, and the pytest suite on CPU (no GPU, no
+  downloads) across Python 3.11 and 3.12.
+- `py.typed` marker so downstream users get streamllm's type information (PEP 561).
+- `streamllm --version` flag.
+- `LICENSE` (Apache-2.0), `CONTRIBUTING.md`, `CHANGELOG.md`, `Makefile`.
+
+### Security
+- Playground server (`web/server.py`) is hardened: `max_new_tokens` and prompt
+  length are clamped, generation is serialized (HTTP 429 when busy) so load cannot
+  pile up against the single shared model, generation errors return a generic
+  message (details logged server-side, never leaked to the client), and
+  `/api/describe` no longer exposes an absolute local model path.
 
 ### Added
 - Auto-tiering policy (`tiering.py`) selecting the least-streaming tier (0 full /
@@ -49,4 +47,6 @@ First release. Speed-first, auto-tiering inference for large language models.
 - `streamllm` CLI: `run` / `shard` / `bench` / `describe`.
 - Web frontend (`web/`): static landing page, client-side tier calculator that
   matches `streamllm describe`, and a FastAPI SSE playground.
-- 74 CPU-only tests; ruff + mypy clean.
+- 91 CPU-only tests (tiny random configs + mocked budgets); ruff + mypy clean.
+  Coverage includes module-graph discovery on Llama/Qwen/GPT-2, sampling filters,
+  sliding-window, LRU-cache concurrency, playground TestClient, and shard reload.
