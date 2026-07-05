@@ -18,6 +18,9 @@ First release. Speed-first, auto-tiering inference for large language models.
 - `py.typed` marker so downstream users get streamllm's type information (PEP 561).
 - `streamllm --version` flag.
 - `LICENSE` (Apache-2.0), `CONTRIBUTING.md`, `CHANGELOG.md`, `Makefile`.
+- pytest `pythonpath = ["src", "."]` so the suite runs under a bare `pytest` in CI
+  (not only `python -m pytest`); the web extra is installed in CI so the playground
+  TestClient tests run there too.
 
 ### Security
 - Playground server (`web/server.py`) is hardened: `max_new_tokens` and prompt

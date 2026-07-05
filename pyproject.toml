@@ -34,7 +34,7 @@ dependencies = [
 [project.optional-dependencies]
 quant = ["bitsandbytes>=0.43"]
 web = ["fastapi>=0.110", "uvicorn>=0.29"]
-test = ["pytest>=7.4", "hypothesis>=6.90"]
+test = ["pytest>=7.4", "hypothesis>=6.90", "httpx>=0.27"]
 dev = ["ruff>=0.5", "mypy>=1.8", "pre-commit>=3.5"]
 
 [project.scripts]
@@ -66,7 +66,8 @@ ignore = [
 "tests/*" = ["B011", "B017", "E731"]
 
 [tool.mypy]
-python_version = "3.11"
+# No fixed python_version: mypy uses the running interpreter, so numpy's 3.12-only
+# stub syntax (PEP 695 `type` statements) does not error on the 3.12 CI runner.
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = false
@@ -81,6 +82,10 @@ exclude = ["tests/", "bench/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Put both the package (src layout) and the repo root on sys.path so `import
+# streamllm` and `from tests.conftest import ...` work under a bare `pytest`
+# (CI), not just `python -m pytest` (which adds cwd for you).
+pythonpath = ["src", "."]
 filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
 markers = [
   "slow: marks tests that are slower (deselect with '-m \"not slow\"')",
