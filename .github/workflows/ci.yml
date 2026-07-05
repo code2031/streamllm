@@ -28,7 +28,8 @@ jobs:
           python -m pip install --upgrade pip
           # CPU-only torch so CI needs no GPU and stays small.
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -e ".[test,dev]"
+          # Include the web extra so the playground TestClient tests run in CI too.
+          pip install -e ".[test,dev,web]"
 
       - name: Ruff lint
         run: ruff check src tests bench web/server.py
@@ -43,4 +44,4 @@ jobs:
         env:
           HF_HUB_OFFLINE: "1"
           TRANSFORMERS_OFFLINE: "1"
-        run: PYTHONPATH=src pytest -q
+        run: pytest -q
