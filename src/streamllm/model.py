@@ -592,10 +592,14 @@ def estimate_only(
     stream_config: StreamConfig | None = None,
     hardware: HardwareInfo | None = None,
 ) -> dict[str, Any]:
-    """Plan a tier from ``config.json`` alone — **no weights loaded** (prompt §13).
+    """Plan a tier from the config alone — **no weights loaded** (prompt §13).
 
     Powers ``streamllm describe``: works on a machine that cannot run the model.
-    Uses the analytic (config-based) param counts, so it needs only the config.
+    It first tries a meta-device skeleton for *exact* per-layer/resident param
+    counts (still zero memory, no weights), which makes the estimate accurate for
+    any architecture (GPT-2, MoE, ...), and falls back to the analytic SwiGLU
+    formula if the skeleton cannot be built (e.g. an architecture the installed
+    transformers does not know).
     """
     if isinstance(model, str):
         from transformers import AutoConfig
@@ -611,6 +615,8 @@ def estimate_only(
     max_ctx = max_context or _infer_max_context(config, cfg)
     pl = prompt_len if prompt_len is not None else (min(max_ctx // 2, 2048) or 1)
     dt = dtype if dtype is not None else _config_dtype_name(config)
+
+    per_layer_params, resident_params = _meta_param_counts(config, trust_remote_code)
     est = estimate_memory(
         config,
         dtype=dt,
@@ -620,6 +626,8 @@ def estimate_only(
         batch_size=batch_size,
         activation_factor=cfg.activation_factor,
         kv_dtype_bytes=cfg.kv_dtype_bytes,
+        per_layer_params=per_layer_params,
+        resident_params=resident_params,
     )
     decision = select_tier(hw, est, cfg, device=device, tier_override=tier)
     return {
@@ -658,6 +666,26 @@ def _infer_max_context(config: Any, cfg: StreamConfig) -> int:
     if limit:
         return min(limit, max(cfg.max_context_default, 0) or limit)
     return cfg.max_context_default
+
+
+def _meta_param_counts(config: Any, trust_remote_code: bool) -> tuple[int | None, int | None]:
+    """Exact per-layer + resident param counts from a meta skeleton (no weights).
+
+    Returns ``(None, None)`` if the skeleton cannot be built, so the caller falls
+    back to the analytic SwiGLU formula. Building on the meta device allocates no
+    tensor storage, so this stays "no weights loaded".
+    """
+    try:
+        from accelerate import init_empty_weights
+        from transformers import AutoModelForCausalLM
+
+        with init_empty_weights():
+            skeleton = AutoModelForCausalLM.from_config(config, trust_remote_code=trust_remote_code)
+        graph = discover_graph(skeleton, config)
+        return _measured_param_counts(graph)
+    except Exception as exc:
+        _log.debug("estimate_only: meta skeleton failed (%s); using analytic counts", exc)
+        return None, None
 
 
 def _build_estimate(

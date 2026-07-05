@@ -22,8 +22,24 @@ def test_estimate_only_returns_budget_without_weights():
     info = estimate_only(tiny_llama_config(), device="cpu")
     assert info["estimate_only"] is True
     assert "tier" in info and "budget" in info
-    assert info["budget"]["source"] == "analytic"  # no model built
+    # A meta skeleton (zero memory) gives exact counts for known architectures.
+    assert info["budget"]["source"] == "measured"
     assert info["budget"]["num_key_value_heads"] == 2
+
+
+def test_estimate_only_accurate_for_gpt2():
+    from accelerate import init_empty_weights
+    from transformers import AutoModelForCausalLM, GPT2Config
+
+    # GPT-2 has a non-gated MLP (c_fc/c_proj), which the analytic SwiGLU formula
+    # would mis-count. The meta-skeleton path must match the real layer count.
+    cfg = GPT2Config(vocab_size=128, n_embd=32, n_layer=3, n_head=4, n_positions=64)
+    info = estimate_only(cfg, device="cpu")
+    assert info["budget"]["source"] == "measured"
+    with init_empty_weights():
+        m = AutoModelForCausalLM.from_config(cfg)
+    actual = sum(p.numel() for p in m.transformer.h[0].parameters())
+    assert info["budget"]["per_layer_params"] == actual
 
 
 def test_estimate_only_big_model_streams_under_small_gpu():

@@ -6,7 +6,13 @@ All notable changes to streamllm are documented here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+- `streamllm describe` / `estimate_only` now build a cheap meta-device skeleton
+  (still zero memory, no weights) to get **exact** per-layer/resident param counts,
+  falling back to the analytic SwiGLU formula only if the skeleton cannot be built.
+  This makes the memory estimate accurate for any architecture (e.g. GPT-2's
+  non-gated MLP), not just Llama/Qwen. The `budget.source` field reports `measured`
+  vs `analytic`.
 
 ## [0.1.0] - 2026-06-24
 

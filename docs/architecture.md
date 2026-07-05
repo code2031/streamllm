@@ -35,8 +35,12 @@ from_pretrained / from_model
 ## The memory model (`memory.py`, prompt §6)
 
 Estimates **peak** memory, not load-time, accounting for KV growth over the full
-generation. Two sources: analytic (from `config.json`, used by `describe`) and
-measured (param counts from the meta skeleton, used at load time).
+generation. Two sources: **measured** (exact param counts from a meta-device
+skeleton, still zero memory) and **analytic** (the SwiGLU formula from config
+fields). Both `describe`/`estimate_only` and load-time try the measured skeleton
+first and fall back to analytic only if the skeleton cannot be built, so the
+estimate is accurate for any architecture (GPT-2, MoE), not just Llama/Qwen. The
+`budget.source` field reports which was used.
 
 ```
 per_layer_bytes  = decoder_layer_param_count * weight_bytes_per_param
