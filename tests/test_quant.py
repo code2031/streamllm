@@ -77,3 +77,23 @@ def test_int8_sharded_reload_runs(tmp_path):
     logits = sm.forward(ids)
     assert logits.shape == (1, 5, cfg.vocab_size)
     assert torch.isfinite(logits).all()
+
+
+def test_int4_sharded_reload_runs(tmp_path):
+    from transformers import AutoModelForCausalLM
+
+    torch.manual_seed(0)
+    cfg = tiny_llama_config(hidden_size=64, intermediate_size=128, vocab_size=128)
+    model = AutoModelForCausalLM.from_config(cfg).eval()
+    # int4 packs two nibbles per byte; the reload must unpack + dequantize correctly.
+    shard_model(model, cfg, out_path=tmp_path, quantize="int4")
+    sm = StreamModel.from_shards(tmp_path, device="cpu")
+    assert sm.decision.tier == 3
+    ids = torch.randint(0, cfg.vocab_size, (1, 5))
+    logits = sm.forward(ids)
+    assert logits.shape == (1, 5, cfg.vocab_size)
+    assert torch.isfinite(logits).all()
+
+    # A short greedy generation must also run end-to-end through the disk runner.
+    gen = sm.generate(ids, max_new_tokens=4, do_sample=False)
+    assert gen.shape == (1, 4)
